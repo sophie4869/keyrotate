@@ -37,6 +37,23 @@ a fresh checkout), use `secret pull <alias>` — it reads the value from the
 canonical store (GCP Secret Manager) and writes the line into `.env`
 without exposing it on stdout.
 
+### Don't enumerate credentials through the Keychain either
+
+Listing what tokens / API keys are stashed in the OS Keychain (e.g.
+`security dump-keychain`, `security find-generic-password -s atlas-api`
+without going through the `secret` tool, the libsecret equivalents on
+Linux) is just `.env`-reading in a different costume — same blast
+radius if a value lands in the transcript. The `secret` tool itself
+calls `security find-generic-password` internally for the specific
+service / account pair it needs at the moment of a rotate/set; that's
+fine. Open-ended enumeration ("what Atlas orgs does the current key
+have access to?", "what tokens are configured?") is out of scope.
+
+If you need to know whether a particular credential is configured,
+infer it from the *behavior* of `secret rotate <alias> <KEY>` /
+`secret list <alias>` failing with a clear message — don't open the
+Keychain to check directly.
+
 ### `secret get` exists — don't use it without explicit user request
 
 The tool has a `secret get <alias> <KEY>` subcommand that prints a value
