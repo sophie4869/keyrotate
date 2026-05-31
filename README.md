@@ -10,8 +10,53 @@ Two motivations, both increasingly underserved by existing "secrets management" 
 
 `keyrotate` answers both:
 
-- **For (1):** declare *where each secret physically lives* in JSON. `secret rotate <project> KEY` propagates the new value to every declared sink atomically. No daemon, no vault, no SaaS — just bash, jq, curl, and a few provider API calls.
-- **For (2):** configs are **values-free by design** (project IDs, cluster hosts, target lists — no passwords or tokens, ever). Agents can read configs freely. `secret list / notes / ls` answer "what exists where, and how do I rotate it?" without ever exposing a value; `secret pull` populates a local `.env` without putting the value on stdout. There's a [matching Claude Code skill template](examples/managing-secrets.SKILL.md) that teaches an agent this protocol, and triggers emergency rotation if a value *does* end up exposed.
+- **For (1):** declare *where each secret physically lives* in JSON. `secret rotate <project> KEY` produces a new value and pushes it to every declared sink in one command (sequentially; see the "no rollback" note below). No daemon, no vault, no SaaS — just bash + a thin wrapper around provider APIs you already have credentials for.
+- **For (2):** configs are **values-free by design** (project IDs, cluster hosts, target lists — no passwords or tokens, ever). Agents can read configs freely, and *should* call the CLI rather than touch `.env`: `secret list / notes / ls` answer "what exists where, and how do I rotate it?" without ever exposing a value; `secret pull` populates a local `.env` without putting the value on stdout. There's a [matching Claude Code skill template](examples/managing-secrets.SKILL.md) that teaches an agent this protocol, and triggers emergency rotation if a value *does* end up exposed.
+
+## Supported platforms (targets)
+
+A "target" is somewhere a secret value physically needs to be. On `secret rotate` / `secret set`, every declared target for a secret is updated **sequentially in array order** (no pre-flight, no transaction, no rollback — see [Failure modes](#failure-modes-rerun-on-partial-failure) below):
+
+| Target | Provider it talks to | What it does |
+|---|---|---|
+| `vercel` | Vercel REST API | DELETE + POST env var; defaults to `sensitive` type |
+| `gcpSecretManager` | `gcloud` CLI | Add a new version to the named secret |
+| `cloudRun` | `gcloud` CLI | `gcloud run services update --update-secrets KEY=name:latest` per configured service |
+| `koyeb` | Koyeb REST API | Upsert account-level secret (manual redeploy still required for it to take effect) |
+| `github` | `gh` CLI | `gh secret set KEY --repo …` for each repo in `.github.repo` / `.github.repos` |
+| `userPassword` | Mongo + GitHub | Composite for test-user rotation: bcrypt → `users.{username}.password` in Mongo + plaintext → GitHub Actions repos |
+| `localEnv` | filesystem | Rewrite the single `KEY=...` line in each configured `.env` (other lines preserved) |
+
+Want a new target? See [Contributing](#contributing) — each is ~50 lines of bash + curl.
+
+## Strategies (how a new value is produced)
+
+| Strategy | Source |
+|---|---|
+| `atlas-mongodb` | PATCHes the Atlas user's password via Admin API, assembles a `mongodb+srv://…` URI (with optional `dbName` embedded in the path) |
+| `random` | `openssl rand` → 48-char base62 by default; `length` + `encoding: hex` overrides |
+| `manual` | You provide it: `--value <V>` or `--from-stdin` |
+
+## Heads up — currently **macOS-only**
+
+The tool reads provider credentials via macOS Keychain (`security find-generic-password`). On Linux / WSL it'll error out the moment you try to use the `atlas-mongodb` strategy. `vercel` and `koyeb` targets *do* honor env-var fallbacks (`$VERCEL_TOKEN`, `$KOYEB_TOKEN`); `github` and `gcloud` targets use their own cross-platform CLI auth and work anywhere.
+
+Porting credential lookup to libsecret (`secret-tool`) for Linux is roughly a 30-line change in `bin/secret` — PRs welcome. If you're not on macOS and don't want to port, **you can stop reading here.**
+
+## Prerequisites
+
+| Required | Purpose |
+|---|---|
+| `bash`, `jq`, `curl`, `openssl` | the script itself |
+| macOS `security` (Keychain) | reading Atlas API key (other targets have env-var fallbacks) |
+
+| Optional (only if you use that target / strategy) | Purpose |
+|---|---|
+| `node` + `npm`             | install bcrypt + mongodb npm deps for the `userPassword` target |
+| `gh` (logged in)           | `github` target (`gh secret set`) |
+| `gcloud` (logged in)       | `gcpSecretManager` and `cloudRun` targets |
+
+`install.sh` checks all of these and skips optional steps cleanly when their tool is missing.
 
 ## Install
 
@@ -20,69 +65,88 @@ git clone https://github.com/sophie4869/keyrotate ~/keyrotate
 cd ~/keyrotate && bash install.sh
 ```
 
-That symlinks `~/bin/secret` to the tool, installs the two node deps for the `userPassword` target, and seeds `~/.config/keyrotate/` with an example config to copy from.
+That symlinks `~/bin/secret` into `~/bin/`, runs `npm install` for the `userPassword` helper *if* node+npm are present (otherwise skipped with a note — you can still use every other target), and seeds `~/.config/keyrotate/` with the example config to copy from.
 
-You'll also want some provider credentials in macOS Keychain (or env vars), per the targets you actually use:
+## Failure modes (recovery on partial failure)
 
-```sh
-# MongoDB Atlas Admin API (for atlas-mongodb strategy)
-security add-generic-password -U -s atlas-api -a public  -w '<PUBLIC>'
-security add-generic-password -U -s atlas-api -a private -w '<PRIVATE>'
+`secret rotate` / `secret set` walks each `targets[]` entry in order and stops on the first non-`200`. There is **no pre-flight, no transaction, and no rollback** — if Vercel succeeds and Cloud Run fails on the next step, you'll have a half-rotated state where Vercel has the new value and Cloud Run still serves the old one.
 
-# Vercel personal token (for vercel target)
-security add-generic-password -U -s vercel-api -a token  -w '<TOKEN>'
+`secret rotate` is **not idempotent**: every invocation generates a fresh value (Atlas PATCH + new password for `atlas-mongodb`; `openssl rand` for `random`). Re-running it after a partial failure won't push the existing new value to the remaining sinks — it'll mint *another* new value and try again.
 
-# Koyeb API token (for koyeb target)
-security add-generic-password -U -s koyeb-api -a token   -w '<TOKEN>'
-```
+**Recovery recipe**:
 
-GitHub target piggybacks on `gh` CLI auth (`gh auth login`). GCP target uses `gcloud` auth.
+1. Read the just-written value from any sink that already succeeded — `localEnv` is the easiest (`grep '^KEY=' <projectRoot>/<env_file>`), and is usually listed first in `targets[]` for exactly this reason. For Vercel, the `/v1/.../env/{id}?decrypt=true` endpoint returns the plaintext for `encrypted` (not `sensitive`) types; `secret add` / `secret remove` already use this same fallback chain internally if you want to see it in action.
+2. Push that value to the remaining sinks with `secret set <project> <KEY> --value '<value-from-sink>'` (or `--from-stdin`). This is the idempotent escape hatch — `secret set` only propagates, it doesn't mint.
+3. Re-running `secret rotate` is fine too if you'd rather just rotate again from scratch — it's safe, just wasteful (extra Atlas PATCH / extra random gen) and you lose the in-flight value.
 
-## What it does
+Adding pre-flight checks + ordered retries is on the backlog.
 
-### Strategies (how the new value is produced)
+## Getting provider credentials
 
-| Strategy | New value comes from |
-|---|---|
-| `atlas-mongodb` | PATCHes the Atlas user's password via Admin API, assembles a `mongodb+srv://…` URI |
-| `random` | `openssl rand` → base62 (default) or hex |
-| `manual` | You provide it: `--value <V>` or `--from-stdin` |
+You only need creds for the targets you actually use. The rest of this section assumes macOS Keychain (per the heads-up above); env-var alternatives are noted per provider.
 
-### Targets (where the value goes)
+### MongoDB Atlas — for `atlas-mongodb` strategy
+1. Atlas → top-left org dropdown → **Access Manager** → **Applications** → **API Keys** → **Create**.
+2. Permissions: `Project Owner` on each project you want to rotate users for (or an org-level key if you'd rather have one key cover all projects).
+3. Copy public + private halves into Keychain:
+   ```sh
+   security add-generic-password -U -s atlas-api -a public  -w '<PUBLIC_KEY>'
+   security add-generic-password -U -s atlas-api -a private -w '<PRIVATE_KEY>'
+   ```
 
-| Target | Action on rotate / set |
-|---|---|
-| `gcpSecretManager` | New version on the named GCP secret |
-| `cloudRun` | `gcloud run services update --update-secrets KEY=name:latest` per service |
-| `vercel` | DELETE + POST via Vercel REST API; defaults to `sensitive` type |
-| `koyeb` | Upsert Koyeb account-level secret (manual redeploy still required) |
-| `github` | `gh secret set KEY --repo …` for each repo in `.github.repo`/`.github.repos` |
-| `userPassword` | Composite: bcrypt → MongoDB users.{username}.password + plaintext → GitHub Actions repos |
-| `localEnv` | Rewrite the single `KEY=...` line in each configured `.env` file |
+### Vercel — for `vercel` target
+1. https://vercel.com/account/settings/tokens → **Create Token**.
+2. Scope: team if you want one token across all your team projects, account if personal-only. Expiration 1 year is reasonable.
+3. ```sh
+   security add-generic-password -U -s vercel-api -a token -w '<VERCEL_TOKEN>'
+   ```
 
-A single `secret rotate` runs **all** declared targets for a secret — Atlas password rotation, GCP SM new version, Cloud Run revision roll, Vercel env recreation, GitHub Actions secret push, and local `.env` overwrite happen in one command and stay in sync.
+### Koyeb — for `koyeb` target
+1. https://app.koyeb.com/user/settings/api → **Create new token**.
+2. ```sh
+   security add-generic-password -U -s koyeb-api -a token -w '<KOYEB_TOKEN>'
+   ```
+
+### GitHub — for `github` target
+Uses `gh` CLI auth — no separate token. Just `gh auth login` once.
+
+### GCP — for `gcpSecretManager` / `cloudRun` targets
+Uses `gcloud` auth. `gcloud auth login` and make sure your account has `roles/secretmanager.admin` on the relevant project (`gcloud projects add-iam-policy-binding …`) and `roles/run.developer` for Cloud Run revision updates.
+
+## Wiring up a new project
+
+Open `~/.config/keyrotate/example.json` (seeded by `install.sh`) — a worked example covering every strategy and target with `_note` strings explaining the trickier secrets. Copy it to `<your-project>.json` and edit. **No field is auto-discovered** — keyrotate doesn't crawl your repo or call provider APIs to populate the config. You write the JSON once; the tool reads it forever after. (Field-by-field documentation lives in [`SCHEMA.md`](SCHEMA.md), since `.json` files can't hold comments.)
+
+The fields fall into two buckets:
+
+**Hand-written from things you already know** (one-time setup, no real research):
+- `projectRoot` — absolute path of your local checkout
+- `localEnv[].file` — relative path inside that checkout
+- `vercel.envs` — usually `["production", "preview"]`
+- `github.repo` / `.repos` — `owner/repo` strings
+- `atlas.dbName` — the Mongo database name your app calls `client.db('…')` with
+- `secrets.<KEY>.targets` — which sinks above to push to
+
+**Hand-written from a quick dashboard lookup** (5 min per project):
+- `vercel.projectId` + `vercel.orgId` — Vercel dashboard → Project Settings → General → Project ID; Team Settings → General → Team ID
+- `gcpProject` + `gcpAccount` — `gcloud projects list` and `gcloud auth list`
+- `cloudRun.services` + `.region` — `gcloud run services list --region <r>`
+- `koyeb.appName` + `.serviceName` — Koyeb dashboard or `koyeb apps list`
+- `atlas.projectId` — Atlas project URL `/v2/<projectId>/...`; or the API `GET /api/atlas/v2/groups` lists all
+- `atlas.clusterHost` — Atlas → cluster → Connect → copy the `cluster0.xxxxx.mongodb.net` part of the connection string
+- `atlas.dbUser` + `.authDb` — usually the rotation-target user (e.g. `client`) and `admin`; the user must already exist in Atlas with whatever roles your app needs
+
+**Per-secret choices**:
+- `strategy` — `atlas-mongodb` for the Mongo URI; `random` for things you self-generate (JWT secrets, session keys, internal API tokens); `manual` for third-party API keys you got from a provider dashboard
+- For `random`: `length` (default 48) and `encoding` (`base62` default, or `hex`)
+- For `atlas-mongodb`: nested `atlas` block (see above)
+- `manualSteps` (optional) — array of strings; surfaced by `secret notes <project> <KEY>` as the rotation playbook (provider UI link, what scopes to grant, how to verify, etc.)
+
+Full schema in [`SCHEMA.md`](SCHEMA.md). A worked example covering every strategy + target in [`examples/example.json`](examples/example.json).
 
 ## Quick start
 
-Drop a config into `~/.config/keyrotate/myapp.json`:
-
-```json
-{
-  "projectRoot": "/Users/you/Projects/myapp",
-  "vercel":   { "projectId": "prj_...", "orgId": "team_...",
-                "envs": ["production", "preview"] },
-  "localEnv": [{ "file": ".env" }],
-
-  "secrets": {
-    "JWT_SECRET":     { "strategy": "random", "length": 64,
-                        "targets":  ["vercel", "localEnv"] },
-    "OPENAI_API_KEY": { "strategy": "manual",
-                        "targets":  ["vercel", "localEnv"] }
-  }
-}
-```
-
-Then:
+Once a config is in place:
 
 ```sh
 secret ls                                       # all configured projects
@@ -93,7 +157,7 @@ secret add    myapp ALLOWED_ORIGINS --value 'https://new.com'   # append to a li
 secret notes  myapp OPENAI_API_KEY              # show the manual rotation playbook
 ```
 
-Full schema lives in [`SCHEMA.md`](SCHEMA.md). A more realistic config covering every strategy + target is in [`examples/example.json`](examples/example.json).
+A single `secret rotate` walks **all** declared targets for a secret — Atlas password rotation, GCP SM new version, Cloud Run revision roll, Vercel env recreation, GitHub Actions secret push, and local `.env` overwrite happen sequentially in one command. On the happy path everything stays in sync; on a sink failure, see [Failure modes](#failure-modes-rerun-on-partial-failure).
 
 ## Subcommands
 

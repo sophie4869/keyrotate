@@ -25,8 +25,10 @@ hdr()  { printf "\n${c_dim}── %s ──${c_off}\n" "$*"; }
 
 # ── 1. prereqs ──
 hdr "prereqs"
+
+# Required — script can't run without these
 missing=()
-for cmd in jq curl openssl node npm; do
+for cmd in jq curl openssl; do
   if command -v "$cmd" >/dev/null 2>&1; then
     ok "$cmd ($(command -v "$cmd"))"
   else
@@ -34,13 +36,28 @@ for cmd in jq curl openssl node npm; do
   fi
 done
 
-for cmd in gh gcloud; do
+# Optional — each gates a specific target / strategy. Skipping is fine.
+HAVE_NPM=0
+for cmd in node npm; do
   if command -v "$cmd" >/dev/null 2>&1; then
     ok "$cmd ($(command -v "$cmd"))"
+    [ "$cmd" = "npm" ] && HAVE_NPM=1
   else
-    warn "$cmd not found — only needed if you use the ${cmd%cloud}* / github targets"
+    warn "$cmd not found — needed only for the userPassword target (bcrypt + mongodb npm deps)"
   fi
 done
+
+if command -v gh >/dev/null 2>&1; then
+  ok "gh ($(command -v gh))"
+else
+  warn "gh not found — needed only for the 'github' target (brew install gh)"
+fi
+
+if command -v gcloud >/dev/null 2>&1; then
+  ok "gcloud ($(command -v gcloud))"
+else
+  warn "gcloud not found — needed only for the 'gcpSecretManager' and 'cloudRun' targets"
+fi
 
 if [ "${#missing[@]}" -gt 0 ]; then
   err "missing required: ${missing[*]}"
@@ -70,13 +87,18 @@ link_one() {
 link_one "$KEYROTATE/bin/secret"         "$HOME_DIR/bin/secret"
 link_one "$KEYROTATE/bin/secret-helpers" "$HOME_DIR/bin/secret-helpers"
 
-# ── 3. node deps for userPassword target ──
-hdr "node deps"
-if [ -d "$KEYROTATE/bin/secret-helpers/node_modules" ]; then
+# ── 3. node deps for userPassword target (optional) ──
+hdr "node deps (optional, for userPassword target)"
+if [ "$HAVE_NPM" = "0" ]; then
+  warn "npm not present — skipping. Every target other than 'userPassword' still works."
+elif [ -d "$KEYROTATE/bin/secret-helpers/node_modules" ]; then
   ok "node_modules already present"
 else
-  ( cd "$KEYROTATE/bin/secret-helpers" && npm install --no-audit --no-fund ) \
-    && ok "installed mongodb + bcrypt"
+  if ( cd "$KEYROTATE/bin/secret-helpers" && npm install --no-audit --no-fund ); then
+    ok "installed mongodb + bcrypt"
+  else
+    warn "npm install failed (network? native bcrypt build?). 'userPassword' target will be unavailable; everything else still works."
+  fi
 fi
 
 # ── 4. config dir ──
@@ -106,5 +128,5 @@ cat <<EOF
     secret notes               # show every manual-rotation playbook
     secret list <project>      # secrets in one project
 
-  Schema reference: SCHEMA.md in this repo (also ~/keyrotate/SCHEMA.md).
+  Schema reference: $KEYROTATE/SCHEMA.md
 EOF

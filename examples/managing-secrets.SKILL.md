@@ -74,10 +74,15 @@ usage. Prefix substrings also resolve (`secret list myapp` matches
 | `userPassword` | Composite: bcrypt → Mongo user doc + plaintext → GitHub Actions (for test-user rotation) |
 | `localEnv` | Rewrites the one matching `KEY=` line in each configured `.env` file |
 
-Every `secret rotate` / `secret set` hits **all** targets in the secret's
-`targets` array atomically. Don't manually edit `.env`, `vercel env`, or
-`gcloud secrets versions add` for tracked keys — use `secret` so all
-locations stay in sync.
+Every `secret rotate` / `secret set` walks **all** targets in the secret's
+`targets` array **sequentially** (no rollback — see Failure modes in the
+keyrotate README). `secret rotate` is **not idempotent**: rerunning mints
+*another* fresh value. On partial failure, read the value from a sink
+that already succeeded (`localEnv` is usually easiest), then push it to
+the remaining sinks with `secret set --value '<that-value>'` —
+`secret set` only propagates, it doesn't mint. Don't manually edit
+`.env`, `vercel env`, or `gcloud secrets versions add` for tracked
+keys — use `secret` so all locations stay in sync.
 
 ## Common task patterns
 
@@ -114,8 +119,7 @@ secret vercel-upgrade <alias> --dry-run    # preview
 secret vercel-upgrade <alias>              # do it
 secret vercel-upgrade --all                # all configured projects
 ```
-Heuristic skips clearly-config vars (`_BASE`, `_URL`, `_NAME`, `_OWNER`,
-`NODE_ENV`, …) and only upgrades credential-shaped names.
+Heuristic only upgrades credential-shaped names (`*_SECRET`, `*_TOKEN`, `*_KEY`, `*_PASSWORD`, `*_PRIVATE`, `*_CREDENTIALS`, `MONGODB_URI`); everything else stays encrypted.
 
 ### "Add a new project to the rotation system"
 1. Create `~/.config/keyrotate/<name>.json` — see `~/keyrotate/SCHEMA.md`

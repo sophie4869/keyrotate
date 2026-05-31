@@ -2,11 +2,11 @@
 //   $set:   { password: bcrypt(plain, 12), updated_at: <now> }
 //   $unset: { resetPasswordToken, resetPasswordExpires }
 //
-// Mirrors utils/db.js#updatePassword in the s0phi3 auth backend so the schema
+// Mirrors utils/db.js#updatePassword in the generic auth backend (override DB_NAME / COLLECTION env vars to fit) so the schema
 // stays consistent.
 //
 // Required env: MONGODB_URI, USERNAME, PASSWORD
-// Optional env: DB_NAME (default 's0phi3_users'), COLLECTION (default 'users'),
+// Optional env: DB_NAME (default 'app_users'), COLLECTION (default 'users'),
 //               BCRYPT_ROUNDS (default 12).
 //
 // Exit codes:
@@ -19,7 +19,7 @@ const {
   MONGODB_URI,
   USERNAME,
   PASSWORD,
-  DB_NAME = 's0phi3_users',
+  DB_NAME = 'app_users',
   COLLECTION = 'users',
   BCRYPT_ROUNDS = '12',
 } = process.env;
