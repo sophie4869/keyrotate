@@ -37,6 +37,11 @@ Discovered automatically — no registration step.
     "targets":       ["gcpSecretManager", "cloudRun", "vercel", "koyeb", "localEnv"],
 
     // strategy=atlas-mongodb only.
+    // dbUser is the *specific* Atlas user this entry rotates; required, no
+    // default. The user must already exist (keyrotate never creates users —
+    // it only PATCHes the password). For multiple Atlas users on the same
+    // cluster, declare one secret entry per user (each with its own env-var
+    // name) and rotate them independently.
     // dbName is optional but recommended — embeds /<dbName> in the URI path so
     // tools that parse the db name from the URI (e.g. mongodump in CI backup
     // workflows) work. App code that calls client.db('explicit') is unaffected.

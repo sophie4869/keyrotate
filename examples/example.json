@@ -26,12 +26,27 @@
       "atlas": {
         "projectId":   "your-atlas-project-id",
         "dbUser":      "client",
+        "_note":       "dbUser is the specific Atlas user this entry rotates — required, no default. Convention here is 'client' (must already exist in your Atlas project). For multiple users (read-write + read-only + analytics, etc.) declare one secret entry per user; see MONGODB_URI_READONLY below.",
         "authDb":      "admin",
         "clusterHost": "cluster0.xxxxx.mongodb.net",
         "dbName":      "example_db",
         "uriParams":   "retryWrites=true&w=majority"
       },
       "targets": ["gcpSecretManager", "cloudRun", "vercel", "localEnv"]
+    },
+
+    "MONGODB_URI_READONLY": {
+      "_note":   "Same cluster, different Atlas user, different env-var name. Rotates independently from MONGODB_URI above. Use this pattern for any cluster with >1 Atlas user (e.g. a read-only user for backups / analytics).",
+      "strategy": "atlas-mongodb",
+      "atlas": {
+        "projectId":   "your-atlas-project-id",
+        "dbUser":      "readonly",
+        "authDb":      "admin",
+        "clusterHost": "cluster0.xxxxx.mongodb.net",
+        "dbName":      "example_db",
+        "uriParams":   "retryWrites=true&w=majority"
+      },
+      "targets": ["gcpSecretManager", "localEnv"]
     },
 
     "JWT_SECRET": {

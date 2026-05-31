@@ -135,7 +135,14 @@ The fields fall into two buckets:
 - `koyeb.appName` + `.serviceName` — Koyeb dashboard or `koyeb apps list`
 - `atlas.projectId` — Atlas project URL `/v2/<projectId>/...`; or the API `GET /api/atlas/v2/groups` lists all
 - `atlas.clusterHost` — Atlas → cluster → Connect → copy the `cluster0.xxxxx.mongodb.net` part of the connection string
-- `atlas.dbUser` + `.authDb` — usually the rotation-target user (e.g. `client`) and `admin`; the user must already exist in Atlas with whatever roles your app needs
+- `atlas.dbUser` + `.authDb` — the *specific* Atlas user this entry rotates. **Required, no default.** The convention in our examples is `dbUser: "client"` + `authDb: "admin"`, but it can be any user that already exists in your Atlas project (keyrotate never creates users — it only PATCHes the password). For a cluster with multiple Atlas users (e.g. a `client` read-write user *and* a `readonly` user for analytics), declare **one secret entry per user**:
+   ```jsonc
+   "MONGODB_URI":          { "strategy": "atlas-mongodb",
+                             "atlas": { "dbUser": "client",   ... }, "targets": [...] },
+   "MONGODB_URI_READONLY": { "strategy": "atlas-mongodb",
+                             "atlas": { "dbUser": "readonly", ... }, "targets": [...] }
+   ```
+   `secret rotate myapp MONGODB_URI` rotates only the `client` password; `secret rotate myapp MONGODB_URI_READONLY` rotates only `readonly`. The two are independent — different env-var names, optionally different `targets`.
 
 **Per-secret choices**:
 - `strategy` — `atlas-mongodb` for the Mongo URI; `random` for things you self-generate (JWT secrets, session keys, internal API tokens); `manual` for third-party API keys you got from a provider dashboard
