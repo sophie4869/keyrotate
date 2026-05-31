@@ -1,10 +1,17 @@
 # keyrotate
 
-> Rotate and sync secrets across every place they live — Vercel, Cloud Run, GCP Secret Manager, Koyeb, GitHub Actions, MongoDB Atlas user passwords, and local `.env` files — from a single config file per project.
+> Rotate and sync secrets across every place they live — Vercel, Cloud Run, GCP Secret Manager, Koyeb, GitHub Actions, MongoDB Atlas user passwords, and local `.env` files — from a single **values-free** JSON config per project.
 
-Most "secrets management" tools assume you store everything in one vault and have your apps fetch from it. Real personal infrastructure rarely looks like that: a Mongo URI lives in **four** places (Vercel env, GCP Secret Manager, Cloud Run env, local `.env`), a Mailjet key in **three** (Vercel, GitHub Actions, local), an API key sometimes also needs to be the SAME value across **eight repos' Actions secrets**. When you rotate, you have to touch every one of them in order, manually, and if you miss one your prod stops working.
+Two motivations, both increasingly underserved by existing "secrets management" tools.
 
-`keyrotate` lets you declare *where a secret lives* in JSON, then runs `secret rotate <project> KEY` and propagates the new value to every declared sink atomically. No agent, no daemon, no vault — just a bash script + a per-project config you commit alongside your code (configs are values-free).
+**1. Secrets live in N places, not one.** Most tools assume one central vault with runtime fetch. Real personal infrastructure rarely looks like that: a Mongo URI lives in **four** places (Vercel env, GCP Secret Manager, Cloud Run env, local `.env`), a Mailjet key in **three** (Vercel, GitHub Actions, local), an e2e test token sometimes needs the *same* value across **eight repos' Actions secrets**. Manual rotation across all of them is a bug factory — miss one and prod stops working.
+
+**2. AI coding agents read `.env`.** Claude Code, Cursor, Copilot, Codex — they crawl your repo for context and don't reliably tell `.env.example` apart from `.env`. The moment a real value lands in an LLM transcript, treat it as leaked: it might be in a remote log, in a chat history that gets shared, in a model's retained conversation. "Tell the agent not to read .env" is a soft constraint that drifts the moment context gets long. We need a structured way for the agent to *look at the secrets inventory without ever reading values*.
+
+`keyrotate` answers both:
+
+- **For (1):** declare *where each secret physically lives* in JSON. `secret rotate <project> KEY` propagates the new value to every declared sink atomically. No daemon, no vault, no SaaS — just bash, jq, curl, and a few provider API calls.
+- **For (2):** configs are **values-free by design** (project IDs, cluster hosts, target lists — no passwords or tokens, ever). Agents can read configs freely. `secret list / notes / ls` answer "what exists where, and how do I rotate it?" without ever exposing a value; `secret pull` populates a local `.env` without putting the value on stdout. There's a [matching Claude Code skill template](examples/managing-secrets.SKILL.md) that teaches an agent this protocol, and triggers emergency rotation if a value *does* end up exposed.
 
 ## Install
 
