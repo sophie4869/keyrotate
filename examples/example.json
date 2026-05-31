@@ -1,0 +1,92 @@
+{
+  "_comment": "Anonymized example config showing every strategy and every target. Drop into ~/.config/keyrotate/<your-project-name>.json and adjust.",
+
+  "projectRoot": "/Users/you/Projects/example-app",
+  "atlasKeychainService": "atlas-api",
+
+  "vercel": {
+    "project":   "example-app",
+    "projectId": "prj_XXXXXXXXXXXXXXXXXX",
+    "orgId":     "team_XXXXXXXXXXXXXXXXXX",
+    "envs":      ["production", "preview"]
+  },
+  "gcpProject": "your-gcp-project",
+  "gcpAccount": "you@example.com",
+  "cloudRun":   { "services": ["example-app-api"], "region": "us-central1" },
+  "koyeb":      { "appName": "example-app", "serviceName": "api",
+                  "tokenKeychainService": "koyeb-api" },
+  "github":     { "repo": "you/example-app" },
+  "localEnv":   [{ "file": ".env" }],
+
+  "secrets": {
+    "MONGODB_URI": {
+      "strategy": "atlas-mongodb",
+      "atlas": {
+        "projectId":   "your-atlas-project-id",
+        "dbUser":      "client",
+        "authDb":      "admin",
+        "clusterHost": "cluster0.xxxxx.mongodb.net",
+        "dbName":      "example_db",
+        "uriParams":   "retryWrites=true&w=majority"
+      },
+      "targets": ["gcpSecretManager", "cloudRun", "vercel", "localEnv"]
+    },
+
+    "JWT_SECRET": {
+      "strategy": "random",
+      "length":   64,
+      "targets":  ["vercel", "localEnv"]
+    },
+
+    "GOOGLE_TOKEN_ENCRYPTION_KEY": {
+      "strategy": "random",
+      "length":   64,
+      "encoding": "hex",
+      "targets":  ["vercel", "localEnv"],
+      "_note": "DON'T cron-rotate this — it encrypts user OAuth refresh tokens; rotation invalidates them all."
+    },
+
+    "OPENAI_API_KEY": {
+      "strategy": "manual",
+      "targets":  ["gcpSecretManager", "cloudRun", "vercel", "localEnv"],
+      "manualSteps": [
+        "Open https://platform.openai.com/api-keys → 'Create new secret key'.",
+        "secret set example OPENAI_API_KEY --value <NEW_KEY>",
+        "Revoke the old key in the same dashboard after a successful LLM request."
+      ]
+    },
+
+    "MAILJET_API_KEY": {
+      "strategy": "manual",
+      "targets":  ["vercel", "github", "localEnv"],
+      "_note": "Rotate together with MAILJET_SECRET_KEY (both halves of the same pair).",
+      "manualSteps": [
+        "Open https://app.mailjet.com/account/apikeys → 'Add a new API key' (don't regenerate the old one — zero-downtime cutover).",
+        "secret set example MAILJET_API_KEY    --value <NEW_PUBLIC_KEY>",
+        "secret set example MAILJET_SECRET_KEY --value <NEW_PRIVATE_KEY>",
+        "After verifying email send, delete the old key pair in Mailjet."
+      ]
+    },
+
+    "TEST_USER_PASSWORD": {
+      "strategy": "random",
+      "length":   32,
+      "targets":  ["userPassword"],
+      "userPassword": {
+        "projectRef":  "example",
+        "username":    "testbot",
+        "dbName":      "example_db",
+        "collection":  "users",
+        "bcryptRounds": 12,
+        "githubRepos": ["you/example-app", "you/example-e2e"]
+      },
+      "_note": "Composite target — bcrypts the new password into MongoDB users.{username}.password AND pushes the plaintext to GitHub Actions secrets so test runners can log in."
+    },
+
+    "ALLOWED_ORIGINS": {
+      "strategy": "manual",
+      "targets":  ["vercel", "localEnv"],
+      "_note": "Not a secret — comma-separated CORS allowlist. Tracked so updates propagate everywhere with `secret add` / `secret remove`."
+    }
+  }
+}

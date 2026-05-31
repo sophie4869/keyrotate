@@ -1,0 +1,6 @@
+bin/secret-helpers/node_modules/
+*.env
+*.env.local
+*.pem
+*.key
+*_credentials*.json

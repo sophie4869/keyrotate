@@ -1,0 +1,6 @@
+{
+  "_comment": "Optional alias map. `secret <cmd> <alias>` resolves <alias> via this file before falling back to prefix-match on config filenames. Keep it in $SECRET_CONFIG_DIR (default ~/.config/keyrotate).",
+
+  "ex":      "example",
+  "example": "example"
+}
