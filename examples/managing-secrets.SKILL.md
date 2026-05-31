@@ -30,11 +30,29 @@ When you need to know something about a project's secrets, **use `secret`**:
 | All rotation playbooks anywhere | `secret notes` |
 | Where would a value go (Vercel/GCP/Koyeb/github/local)? | check `targets` in `secret list <alias>` output |
 | Current value of a list-style var (e.g. ALLOWED_ORIGINS) | `secret add` / `secret remove` reads it internally — you don't need to |
+| The actual value of a secret | **Don't.** `secret get` exists but is human-only; see below. |
 
 If you genuinely need a `.env` file populated locally (e.g., bootstrapping
 a fresh checkout), use `secret pull <alias>` — it reads the value from the
 canonical store (GCP Secret Manager) and writes the line into `.env`
 without exposing it on stdout.
+
+### `secret get` exists — don't use it without explicit user request
+
+The tool has a `secret get <alias> <KEY>` subcommand that prints a value
+to stdout (using the same Vercel-decrypt fallback chain as `add`/`remove`).
+It's there for **human** debugging — agents must not call it on their
+own initiative, because the printed value lands in the conversation
+transcript. If the user explicitly says "print the value" or "what's
+the current X?", offer to pipe it to `pbcopy` instead:
+
+```sh
+secret get <alias> <KEY> | pbcopy   # copies to clipboard, doesn't print
+```
+
+The tool itself prints a stderr warning when stdout isn't a TTY (pipe,
+redirection, agent shell). If you see that warning fire on a call you
+made, you've already leaked — rotate immediately.
 
 ## If a `.env` value DID get read (emergency)
 
@@ -72,7 +90,13 @@ usage. Prefix substrings also resolve (`secret list myapp` matches
 | `koyeb` | Upserts Koyeb account-level secret (manual redeploy needed to take effect) |
 | `github` | `gh secret set KEY --repo …` for each repo in `.github.repo`/`.github.repos` |
 | `userPassword` | Composite: bcrypt → Mongo user doc + plaintext → GitHub Actions (for test-user rotation) |
+| `ssh` | `ssh user@host` + `cat > path` + `chmod 600` — for NAS/VPS/anything SSH-reachable. Per-secret `ssh.path` required. |
 | `localEnv` | Rewrites the one matching `KEY=` line in each configured `.env` file |
+
+Some entries have `"targets": []` and rely entirely on `manualSteps` — those are
+**inventory-only** records of credentials living somewhere the tool can't reach
+(a vendor portal, etc.). `secret rotate / set` no-ops for those; `secret notes`
+shows the playbook.
 
 Every `secret rotate` / `secret set` walks **all** targets in the secret's
 `targets` array **sequentially** (no rollback — see Failure modes in the

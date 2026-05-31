@@ -16,6 +16,8 @@
   "koyeb":      { "appName": "example-app", "serviceName": "api",
                   "tokenKeychainService": "koyeb-api" },
   "github":     { "repo": "you/example-app" },
+  "ssh":        { "host": "10.0.0.50", "user": "deploy",
+                  "keyFile": "~/.ssh/id_keyrotate" },
   "localEnv":   [{ "file": ".env" }],
 
   "secrets": {
@@ -81,6 +83,31 @@
         "githubRepos": ["you/example-app", "you/example-e2e"]
       },
       "_note": "Composite target — bcrypts the new password into MongoDB users.{username}.password AND pushes the plaintext to GitHub Actions secrets so test runners can log in."
+    },
+
+    "NAS_DEPLOY_GITHUB_PAT": {
+      "strategy": "manual",
+      "targets":  ["ssh", "localEnv"],
+      "ssh":      { "path": "/var/secrets/github_pat" },
+      "_note": "Read-only PAT a NAS cron uses to `git pull`. After `secret set`, the value lands at the configured ssh.path on the remote (chmod 600). GitHub PATs can't be created via API, so manual strategy; manualSteps below documents the UI flow.",
+      "manualSteps": [
+        "Open https://github.com/settings/personal-access-tokens → 'Generate new token' (fine-grained).",
+        "Repository access: only the repo(s) the NAS clones. Permissions: Contents Read-only + Metadata Read-only. Expiry: 1 year.",
+        "secret set example NAS_DEPLOY_GITHUB_PAT --value <NEW_TOKEN>   # ssh writes it to /var/secrets/github_pat",
+        "Test: SSH in and run the cron job's git-pull step manually.",
+        "Revoke the old PAT at https://github.com/settings/personal-access-tokens."
+      ]
+    },
+
+    "PROVISIONING_DOC_URL": {
+      "strategy": "manual",
+      "targets":  [],
+      "_note": "Inventory-only entry: tracked here so `secret list example` shows it and `secret notes example PROVISIONING_DOC_URL` surfaces the playbook, but propagation is fully manual (no targets). Use this pattern for secrets that live somewhere keyrotate can't reach (a vendor portal, a one-off SaaS without an API, etc.).",
+      "manualSteps": [
+        "Log into the vendor portal.",
+        "Generate / rotate the credential by hand.",
+        "Update wherever it's consumed (no automated propagation)."
+      ]
     },
 
     "ALLOWED_ORIGINS": {

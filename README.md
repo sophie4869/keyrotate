@@ -25,6 +25,7 @@ A "target" is somewhere a secret value physically needs to be. On `secret rotate
 | `koyeb` | Koyeb REST API | Upsert account-level secret (manual redeploy still required for it to take effect) |
 | `github` | `gh` CLI | `gh secret set KEY --repo …` for each repo in `.github.repo` / `.github.repos` |
 | `userPassword` | Mongo + GitHub | Composite for test-user rotation: bcrypt → `users.{username}.password` in Mongo + plaintext → GitHub Actions repos |
+| `ssh` | any SSH-reachable host | `ssh user@host` + `cat > /path/to/secret` + `chmod 600`. For NAS / VPS / Raspberry Pi / anywhere without a management API. Per-secret `.ssh.path` is required. |
 | `localEnv` | filesystem | Rewrite the single `KEY=...` line in each configured `.env` (other lines preserved) |
 
 Want a new target? See [Contributing](#contributing) — each is ~50 lines of bash + curl.
@@ -140,7 +141,10 @@ The fields fall into two buckets:
 - `strategy` — `atlas-mongodb` for the Mongo URI; `random` for things you self-generate (JWT secrets, session keys, internal API tokens); `manual` for third-party API keys you got from a provider dashboard
 - For `random`: `length` (default 48) and `encoding` (`base62` default, or `hex`)
 - For `atlas-mongodb`: nested `atlas` block (see above)
+- For `ssh` target: per-secret `ssh.path` (the absolute remote path to write to — each secret usually wants its own file)
 - `manualSteps` (optional) — array of strings; surfaced by `secret notes <project> <KEY>` as the rotation playbook (provider UI link, what scopes to grant, how to verify, etc.)
+
+**Inventory-only entries** (`"targets": []`): for credentials that live somewhere keyrotate can't reach (vendor portal, internal one-off, anything API-less). `secret list / notes` surface the entry as documentation; `secret rotate / set` succeed with a no-op propagation. See `PROVISIONING_DOC_URL` in `examples/example.json` for the pattern.
 
 Full schema in [`SCHEMA.md`](SCHEMA.md). A worked example covering every strategy + target in [`examples/example.json`](examples/example.json).
 
@@ -169,6 +173,7 @@ secret set            <project> <KEY> [--value V | --from-stdin]
 secret add            <project> <KEY> --value V [--separator ,]  append to delimited list
 secret remove         <project> <KEY> --value V [--separator ,]  remove from delimited list
 secret pull           <project> [KEY]           resync localEnv from GCP Secret Manager
+secret get            <project> <KEY>           print current value to stdout (human-only — agents must not call without explicit user request; warns on non-TTY)
 secret vercel-upgrade <project|--all> [--dry-run] [--encrypted|--sensitive]
                                                 upgrade Vercel env vars to sensitive (heuristic by default)
 secret notes          [project [KEY]]           show rotation playbooks (manualSteps)

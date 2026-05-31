@@ -19,6 +19,9 @@ Discovered automatically — no registration step.
                   "tokenKeychainService": "koyeb-api"    // Keychain svc name; fallback $KOYEB_TOKEN
                 },
   "github":     { "repo": "owner/repo" },                // or "repos": ["owner/a", "owner/b"]
+  "ssh":        { "host": "10.0.0.5", "user": "deploy",  // ssh target host (per-secret .ssh.path is required)
+                  "keyFile": "~/.ssh/id_keyrotate",      // optional; ssh default keys otherwise
+                  "port": 22 },                          // optional
   "localEnv":   [{ "file": ".env" }],                    // array, paths relative to projectRoot
   "atlasKeychainService": "atlas-api"                    // Keychain svc name for the Atlas Admin API pair
 }
@@ -65,7 +68,7 @@ Discovered automatically — no registration step.
 
 ## Synthetic / shared configs
 
-A config file may omit `projectRoot` and act as a holder for secrets shared across multiple repos (e.g. `_shared-monitoring.json`). Such configs only use `github` (or other targets that don't need a project root).
+A config file may omit `projectRoot` and act as a holder for secrets shared across multiple repos (convention: prefix the filename with `_`, e.g. `_shared.json`). Such configs only use `github` (or other targets that don't need a project root).
 
 ## Strategies
 
@@ -85,9 +88,12 @@ A config file may omit `projectRoot` and act as a holder for secrets shared acro
 | `koyeb`            | Koyeb REST API: upsert **account-level secret** by name (service `koyeb.serviceName` then needs a manual redeploy to consume it) |
 | `github`           | `gh secret set KEY` to repos listed in `.github.repo`/`.github.repos` (top-level) or per-secret `.secrets[K].github.repos` |
 | `userPassword`     | **Composite.** bcrypt the value and write to an auth-backend Mongo user, then push the plaintext to GitHub Actions repos. See `secrets[K].userPassword` block (`projectRef`, `username`, `githubRepos`, optional `dbName`/`collection`/`bcryptRounds`). |
+| `ssh`              | `ssh user@host` + `cat > <secrets[K].ssh.path>` + `chmod 600`. Top-level `.ssh` declares the host/user/keyFile/port; per-secret `.ssh.path` is required (each secret usually has its own file on the remote). For SSH-reachable hosts that don't have an API (NAS, VPS, Raspberry Pi). |
 | `localEnv`         | rewrite the single matching `KEY=` line in each `localEnv[].file` (other lines preserved) |
 
-Targets are processed **sequentially in array order**, not transactionally. If a later target fails after earlier ones succeeded, state is partially updated — fix the cause and rerun the same `secret rotate/set` command (it's idempotent).
+Targets are processed **sequentially in array order** — no pre-flight, no transaction, no rollback. `secret rotate` is **not idempotent**: each invocation mints a fresh value. On partial failure, read the value back from a sink that succeeded (`localEnv` is usually easiest) and push it to the remaining sinks with `secret set --value '<that-value>'` — `secret set` only propagates, never mints.
+
+**Inventory-only entries**: a secret may declare `"targets": []` and rely entirely on `manualSteps`. `secret list/notes` will surface it; `secret rotate/set` will succeed with a no-op propagation. Useful for credentials that live somewhere keyrotate can't reach (vendor portals, internal one-offs).
 
 ## CLI
 
@@ -99,6 +105,7 @@ secret set            <project> <KEY> [--value V | --from-stdin]
 secret add            <project> <KEY> --value V [--separator ,]    # append to delimited list
 secret remove         <project> <KEY> --value V [--separator ,]    # remove from delimited list
 secret pull           <project> [KEY]           # resync localEnv from GCP Secret Manager
+secret get            <project> <KEY>           # print current value to stdout (human-only; warns on non-TTY)
 secret notes          [project [KEY]]           # show rotation playbooks (manualSteps)
 secret vercel-upgrade <project|--all> [--dry-run] [--encrypted|--sensitive] [--all-keys]
 ```
