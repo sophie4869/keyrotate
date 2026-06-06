@@ -19,7 +19,7 @@ A "target" is somewhere a secret value physically needs to be. On `secret rotate
 
 | Target | Provider it talks to | What it does |
 |---|---|---|
-| `vercel` | Vercel REST API | DELETE + POST env var; defaults to `sensitive` type |
+| `vercel` | Vercel REST API | DELETE + POST env var (`sensitive` by default), then trigger a production redeploy so running functions pick up the new value (Vercel env updates do *not* auto-redeploy on their own — functions hold the env snapshot from when they were last deployed). Opt out by setting `vercel.autoRedeploy: false`. |
 | `gcpSecretManager` | `gcloud` CLI | Add a new version to the named secret |
 | `cloudRun` | `gcloud` CLI | `gcloud run services update --update-secrets KEY=name:latest` per configured service |
 | `koyeb` | Koyeb REST API | Upsert account-level secret (manual redeploy still required for it to take effect) |

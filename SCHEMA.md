@@ -11,7 +11,14 @@ Discovered automatically — no registration step.
   "vercel":   { "project": "<name>",                   // human label, unused by tool
                 "projectId": "prj_…",                  // Vercel dashboard → Project → Settings → Project ID
                 "orgId":     "team_…",                 // Team Settings → General → Team ID
-                "envs":      ["production", "preview"] },
+                "envs":      ["production", "preview"],
+                "autoRedeploy": true                   // optional, default true. When prod is in envs and a
+                                                       // rotate/set successfully updates Vercel env, trigger
+                                                       // a redeploy of the latest READY prod deployment so
+                                                       // running functions actually pick up the new value.
+                                                       // Set to false for projects where you'd rather
+                                                       // redeploy manually.
+              },
   "gcpProject": "gcp-project-id",
   "gcpAccount": "you@example.com",
   "cloudRun":   { "services": ["service-1", "service-2"], "region": "us-central1" },
