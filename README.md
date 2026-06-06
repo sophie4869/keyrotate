@@ -87,13 +87,25 @@ Adding pre-flight checks + ordered retries is on the backlog.
 You only need creds for the targets you actually use. The rest of this section assumes macOS Keychain (per the heads-up above); env-var alternatives are noted per provider.
 
 ### MongoDB Atlas — for `atlas-mongodb` strategy
-1. Atlas → top-left org dropdown → **Access Manager** → **Applications** → **API Keys** → **Create**.
-2. Permissions: `Project Owner` on each project you want to rotate users for (or an org-level key if you'd rather have one key cover all projects).
+
+**First-time setup** (create a single org-level key, reused across all your Atlas projects):
+
+1. Atlas → top-left org dropdown → **Access Manager** → tab **Applications** → **API Keys** → **Create**.
+2. Description: anything (e.g. `keyrotate`). Org permission: `Read Only` is enough (you don't need to manage the org itself; the per-project Project-Owner grant in the next step is what authorizes the password PATCH).
 3. Copy public + private halves into Keychain:
    ```sh
    security add-generic-password -U -s atlas-api -a public  -w '<PUBLIC_KEY>'
    security add-generic-password -U -s atlas-api -a private -w '<PRIVATE_KEY>'
    ```
+
+**Per Atlas project** — even with an org-level key, each project needs the key explicitly added before keyrotate can see/PATCH users in it:
+
+4. Atlas → top-left **project switcher** → pick the project that hosts the cluster you want to rotate → left nav **Access Manager** → tab **Applications** → **API Keys** → **Invite to Project** → search for the org key by description → grant **Project Owner**.
+5. Repeat step 4 once for every Atlas project keyrotate needs to manage.
+
+To verify the key sees a project, run `curl --user "$PUB:$PRIV" --digest -H 'Accept: application/vnd.atlas.2024-08-05+json' https://cloud.mongodb.com/api/atlas/v2/groups | jq -r '.results[].name'` — the names you see are the ones keyrotate can rotate users for. If a project name is missing here, the `atlas-mongodb` strategy will return `❌ Atlas HTTP 401` for any secret pointing into it.
+
+(If you create the API key **inside a project** instead of at the org level, it's automatically a Project-Owner for *that one* project but invisible to all other projects. The org-level + per-project-grant pattern above scales better when you accumulate projects.)
 
 ### Vercel — for `vercel` target
 1. https://vercel.com/account/settings/tokens → **Create Token**.
