@@ -67,6 +67,19 @@ Discovered automatically — no registration step.
     // optional override: push to a different set of GitHub repos than top-level .github
     "github": { "repos": ["owner/repo-a", "owner/repo-b"] },
 
+    // optional: after primary propagation, push the SAME value to other
+    // projects' deploy targets. Use when one shared secret has to live in
+    // multiple projects (e.g. a JWT signing key issued by an auth server
+    // and verified by N other services with HS256). Each entry temporarily
+    // switches the secret tool's CFG context to the named project's config
+    // and reruns the listed target subset there. The other project's
+    // gcpProject / vercel / cloudRun / localEnv blocks supply the destination
+    // metadata; the secret name (KEY) stays the same.
+    "crossProjectPropagate": [
+      { "project": "downstream-a", "targets": ["gcpSecretManager", "cloudRun", "localEnv"] },
+      { "project": "downstream-b", "targets": ["vercel", "localEnv"] }
+    ],
+
     // optional: rotation playbook surfaced via `secret notes <project> <KEY>`.
     // Use for secrets where rotation needs UI steps that the tool can't automate
     // (e.g. GitHub App private keys, GitHub PATs, anything from a third-party console).
