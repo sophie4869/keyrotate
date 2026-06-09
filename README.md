@@ -36,7 +36,7 @@ Want a new target? See [Contributing](#contributing) — each is ~50 lines of ba
 |---|---|
 | `atlas-mongodb` | PATCHes the Atlas user's password via Admin API, assembles a `mongodb+srv://…` URI (with optional `dbName` embedded in the path) |
 | `random` | `openssl rand` → 48-char base62 by default; `length` + `encoding: hex` overrides |
-| `manual` | You provide it: `--value <V>` or `--from-stdin` |
+| `manual` | You provide it: `KEY=value` shorthand, `--value <V>`, or `--from-stdin` |
 
 ## Heads up — currently **macOS-only**
 
@@ -77,7 +77,7 @@ That symlinks `~/bin/secret` into `~/bin/`, runs `npm install` for the `userPass
 **Recovery recipe**:
 
 1. Read the just-written value from any sink that already succeeded — `localEnv` is the easiest (`grep '^KEY=' <projectRoot>/<env_file>`), and is usually listed first in `targets[]` for exactly this reason. For Vercel, the `/v1/.../env/{id}?decrypt=true` endpoint returns the plaintext for `encrypted` (not `sensitive`) types; `secret add` / `secret remove` already use this same fallback chain internally if you want to see it in action.
-2. Push that value to the remaining sinks with `secret set <project> <KEY> --value '<value-from-sink>'` (or `--from-stdin`). This is the idempotent escape hatch — `secret set` only propagates, it doesn't mint.
+2. Push that value to the remaining sinks with `secret set <project> KEY='<value-from-sink>'` (or `KEY --value '<v>'`, or `KEY --from-stdin`). This is the idempotent escape hatch — `secret set` only propagates, it doesn't mint.
 3. Re-running `secret rotate` is fine too if you'd rather just rotate again from scratch — it's safe, just wasteful (extra Atlas PATCH / extra random gen) and you lose the in-flight value.
 
 Adding pre-flight checks + ordered retries is on the backlog.
@@ -175,21 +175,43 @@ Once a config is in place:
 secret ls                                       # all configured projects
 secret list myapp                               # secrets in myapp
 secret rotate myapp JWT_SECRET                  # generate random + propagate
-secret set    myapp OPENAI_API_KEY --value sk-… # propagate the value
+secret set    myapp OPENAI_API_KEY=sk-…         # KEY=value shorthand
+secret set    myapp OPENAI_API_KEY --value sk-… # equivalent explicit form
 secret add    myapp ALLOWED_ORIGINS --value 'https://new.com'   # append to a list value
 secret notes  myapp OPENAI_API_KEY              # show the manual rotation playbook
 ```
 
 A single `secret rotate` walks **all** declared targets for a secret — Atlas password rotation, GCP SM new version, Cloud Run revision roll, Vercel env recreation, GitHub Actions secret push, and local `.env` overwrite happen sequentially in one command. On the happy path everything stays in sync; on a sink failure, see [Failure modes](#failure-modes-rerun-on-partial-failure).
 
+### Batching multiple keys
+
+Both `rotate` and `set` accept multiple keys in a single invocation. The redeploy that Vercel needs to actually pick up a new env value is **deferred until the end of the run and deduplicated by Vercel projectId**, so rotating N keys that all hit the same Vercel project = 1 redeploy, not N. Dedup also collapses redeploys queued via `crossProjectPropagate` hops.
+
+```sh
+# Rotate two API tokens in one shot — 1 Vercel redeploy at the end
+secret rotate myapp API_TOKEN_1 API_TOKEN_2
+
+# Set three at once with KEY=value shorthand
+secret set myapp DB_HOST=db.prod.example DB_PORT=5432 DB_NAME=prod
+
+# Mix shorthand with --value freely (split on FIRST '=' so values can contain '=')
+secret set myapp \
+  TOKEN_A=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0= \
+  TOKEN_B --value 'value with spaces' \
+  WEBHOOK=https://discord.com/api/webhooks/...
+```
+
+`--from-stdin` and the interactive prompt are single-key only (stdin can't be split between keys; prompting N times is hostile UX).
+
 ## Subcommands
 
 ```
 secret ls                                       list known projects
 secret list           <project>                 list secrets in a project
-secret rotate         <project> <KEY>           rotate (atlas-mongodb / random)
-secret set            <project> <KEY> [--value V | --from-stdin]
-secret add            <project> <KEY> --value V [--separator ,]  append to delimited list
+secret rotate         <project> <KEY> [KEY...]  rotate (atlas-mongodb / random); multi-key batches Vercel redeploy
+secret set            <project> <KEY=V | KEY --value V | KEY --from-stdin> [more pairs...]
+                                                multi-pair batches Vercel redeploy; mix shorthand and --value freely
+secret add            <project> <KEY> --value V [--separator ,]  append to delimited list (read-current+dedupe+push)
 secret remove         <project> <KEY> --value V [--separator ,]  remove from delimited list
 secret pull           <project> [KEY]           resync localEnv from GCP Secret Manager
 secret get            <project> <KEY>           print current value to stdout (human-only — agents must not call without explicit user request; warns on non-TTY)

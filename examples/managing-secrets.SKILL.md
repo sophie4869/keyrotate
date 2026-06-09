@@ -78,8 +78,10 @@ your scratchpad, or in any tool's stdout as **compromised**. Rotate
 immediately:
 
 ```sh
-secret rotate <alias> <KEY>          # for atlas-mongodb / random strategy
-secret set    <alias> <KEY> --from-stdin   # for manual strategy (paste new value)
+secret rotate <alias> <KEY>                  # for atlas-mongodb / random strategy
+secret set    <alias> <KEY> --from-stdin     # for manual strategy (paste new value)
+secret set    <alias> <KEY>='<new value>'    # equivalent shorthand
+secret rotate <alias> <KEY1> <KEY2>          # multiple keys at once — batches the Vercel redeploy
 ```
 
 Tell the user what was exposed and what you rotated.

@@ -101,7 +101,7 @@ A config file may omit `projectRoot` and act as a holder for secrets shared acro
 |---|---|
 | `atlas-mongodb` | PATCH Atlas user password → assemble `mongodb+srv://…` |
 | `random`        | `openssl rand` → base62 (default) or hex |
-| `manual`        | take from `--value <V>` or `--from-stdin` (no `secret rotate`; use `secret set`) |
+| `manual`        | take from `KEY=value` shorthand, `--value <V>`, or `--from-stdin` (no `secret rotate`; use `secret set`) |
 
 ## Targets
 
@@ -114,7 +114,7 @@ A config file may omit `projectRoot` and act as a holder for secrets shared acro
 | `github`           | `gh secret set KEY` to repos listed in `.github.repo`/`.github.repos` (top-level) or per-secret `.secrets[K].github.repos` |
 | `userPassword`     | **Composite.** bcrypt the value and write to an auth-backend Mongo user, then push the plaintext to GitHub Actions repos. See `secrets[K].userPassword` block (`projectRef`, `username`, `githubRepos`, optional `dbName`/`collection`/`bcryptRounds`). |
 | `ssh`              | `ssh user@host` + `cat > <secrets[K].ssh.path>` + `chmod 600`. Top-level `.ssh` declares the host/user/keyFile/port; per-secret `.ssh.path` is required (each secret usually has its own file on the remote). For SSH-reachable hosts that don't have an API (NAS, VPS, Raspberry Pi). |
-| `localEnv`         | rewrite the single matching `KEY=` line in each `localEnv[].file` (other lines preserved) |
+| `localEnv`         | rewrite the single matching `KEY=` line in each `localEnv[].file` (other lines preserved). Each entry takes optional `mode` (chmod after write; default `"600"`) — set `"640"` to share with a sibling user via group membership. `file` starting with `/` is treated as absolute; relative is resolved against `projectRoot` (allows one canonical file outside any project root, e.g. `/Users/Shared/secrets.env`). |
 
 Targets are processed **sequentially in array order** — no pre-flight, no transaction, no rollback. `secret rotate` is **not idempotent**: each invocation mints a fresh value. On partial failure, read the value back from a sink that succeeded (`localEnv` is usually easiest) and push it to the remaining sinks with `secret set --value '<that-value>'` — `secret set` only propagates, never mints.
 
@@ -125,12 +125,14 @@ Targets are processed **sequentially in array order** — no pre-flight, no tran
 ```
 secret ls
 secret list           <project>
-secret rotate         <project> <KEY>           # atlas-mongodb / random
-secret set            <project> <KEY> [--value V | --from-stdin]
-secret add            <project> <KEY> --value V [--separator ,]    # append to delimited list
-secret remove         <project> <KEY> --value V [--separator ,]    # remove from delimited list
-secret pull           <project> [KEY]           # resync localEnv from GCP Secret Manager
-secret get            <project> <KEY>           # print current value to stdout (human-only; warns on non-TTY)
-secret notes          [project [KEY]]           # show rotation playbooks (manualSteps)
+secret rotate         <project> <KEY> [KEY...]                                                # atlas-mongodb / random
+secret set            <project> <KEY=V | KEY --value V | KEY --from-stdin> [more pairs...]
+secret add            <project> <KEY> --value V [--separator ,]                               # append to delimited list
+secret remove         <project> <KEY> --value V [--separator ,]                               # remove from delimited list
+secret pull           <project> [KEY]                                                         # resync localEnv from GCP Secret Manager
+secret get            <project> <KEY>                                                         # print current value to stdout (human-only; warns on non-TTY)
+secret notes          [project [KEY]]                                                         # show rotation playbooks (manualSteps)
 secret vercel-upgrade <project|--all> [--dry-run] [--encrypted|--sensitive] [--all-keys]
 ```
+
+**Multi-key invocations on `rotate` / `set` batch the post-write Vercel redeploy**: every Vercel project touched (including via `crossProjectPropagate`) gets one redeploy at the end of the run, deduplicated by projectId. For `set`, the three pair forms (shorthand `KEY=V`, explicit `--value`, and `--from-stdin`) can mix freely in one invocation — `--from-stdin` and the interactive prompt remain single-key only.
