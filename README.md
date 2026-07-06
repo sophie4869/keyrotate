@@ -1,5 +1,9 @@
 # keyrotate
 
+[![License: MIT](https://img.shields.io/github/license/sophie4869/keyrotate)](LICENSE)
+[![Latest tag](https://img.shields.io/github/v/tag/sophie4869/keyrotate?label=latest)](https://github.com/sophie4869/keyrotate/releases)
+[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey)](#heads-up--currently-macos-only)
+
 > Rotate and sync secrets across every place they live — Vercel, Cloud Run, GCP Secret Manager, Koyeb, GitHub Actions, MongoDB Atlas user passwords, and local `.env` files — from a single **values-free** JSON config per project.
 
 Two motivations, both increasingly underserved by existing "secrets management" tools.
