@@ -74,10 +74,12 @@ Discovered automatically — no registration step.
     // switches the secret tool's CFG context to the named project's config
     // and reruns the listed target subset there. The other project's
     // gcpProject / vercel / cloudRun / localEnv blocks supply the destination
-    // metadata; the secret name (KEY) stays the same.
+    // metadata. The secret name (KEY) stays the same unless the entry sets
+    // "key" to write the shared value under a legacy/downstream env-var name.
     "crossProjectPropagate": [
       { "project": "downstream-a", "targets": ["gcpSecretManager", "cloudRun", "localEnv"] },
-      { "project": "downstream-b", "targets": ["vercel", "localEnv"] }
+      { "project": "downstream-b", "targets": ["vercel", "localEnv"] },
+      { "project": "legacy-app", "key": "MAILJET_SECRET_KEY", "targets": ["vercel", "localEnv"] }
     ],
 
     // optional: rotation playbook surfaced via `secret notes <project> <KEY>`.
@@ -93,7 +95,22 @@ Discovered automatically — no registration step.
 
 ## Synthetic / shared configs
 
-A config file may omit `projectRoot` and act as a holder for secrets shared across multiple repos (convention: prefix the filename with `_`, e.g. `_shared.json`). Such configs only use `github` (or other targets that don't need a project root).
+A config file may omit `projectRoot` and act as a holder for secrets shared across multiple repos (convention: prefix the filename with `_`, e.g. `_shared.json`). Put the shared secret's own `targets` to `[]`, then use `crossProjectPropagate` entries to push the value into each consuming project. Downstream entries may set `"key"` when the shared owner uses the canonical name but a consuming project still reads a legacy env var:
+
+```jsonc
+{
+  "secrets": {
+    "MAILJET_API_SECRET": {
+      "strategy": "manual",
+      "targets": [],
+      "crossProjectPropagate": [
+        { "project": "new-app", "targets": ["vercel", "localEnv"] },
+        { "project": "old-app", "key": "MAILJET_SECRET_KEY", "targets": ["vercel", "localEnv"] }
+      ]
+    }
+  }
+}
+```
 
 ## Strategies
 

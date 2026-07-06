@@ -263,6 +263,8 @@ secret get s0 JWT_SECRET | (read -r V; secret set s0 JWT_SECRET --value "$V" --t
 
 `--targets` earlier skipped `crossProjectPropagate` wholesale; it now filters within it, so a sink-scoped push reaches downstream sinks of that type too.
 
+`crossProjectPropagate` entries can also set `"key"` to write the shared value under a different env-var name in that downstream project. This is useful while standardizing a fleet: a shared `_mailjet` config can own `MAILJET_API_SECRET`, while an older project still receives the same value as `MAILJET_SECRET_KEY` until its code is renamed.
+
 ## Why not [X]?
 
 | Tool | Why this exists instead |

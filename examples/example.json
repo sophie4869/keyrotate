@@ -76,13 +76,25 @@
     "MAILJET_API_KEY": {
       "strategy": "manual",
       "targets":  ["vercel", "github", "localEnv"],
-      "_note": "Rotate together with MAILJET_SECRET_KEY (both halves of the same pair).",
+      "_note": "Rotate together with MAILJET_API_SECRET (both halves of the same pair).",
       "manualSteps": [
         "Open https://app.mailjet.com/account/apikeys → 'Add a new API key' (don't regenerate the old one — zero-downtime cutover).",
         "secret set example MAILJET_API_KEY    --value <NEW_PUBLIC_KEY>",
-        "secret set example MAILJET_SECRET_KEY --value <NEW_PRIVATE_KEY>",
+        "secret set example MAILJET_API_SECRET --value <NEW_PRIVATE_KEY>",
         "After verifying email send, delete the old key pair in Mailjet."
       ]
+    },
+
+    "MAILJET_API_SECRET": {
+      "strategy": "manual",
+      "targets":  ["vercel", "github", "localEnv"],
+      "_note": "Private half of the Mailjet key pair. Rotate together with MAILJET_API_KEY."
+    },
+
+    "EMAIL_FROM": {
+      "strategy": "manual",
+      "targets":  ["vercel", "github", "localEnv"],
+      "_note": "Verified sender address for outbound email. Not secret, but tracked so it stays aligned with Mailjet consumers."
     },
 
     "TEST_USER_PASSWORD": {

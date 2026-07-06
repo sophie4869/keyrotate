@@ -1,0 +1,40 @@
+{
+  "_comment": "Synthetic shared config example. Save as ~/.config/keyrotate/_mailjet.json and edit the downstream project/target list.",
+
+  "secrets": {
+    "MAILJET_API_KEY": {
+      "strategy": "manual",
+      "targets": [],
+      "crossProjectPropagate": [
+        { "project": "new-app", "targets": ["vercel", "localEnv"] },
+        { "project": "worker", "targets": ["gcpSecretManager", "cloudRun", "localEnv"] }
+      ],
+      "_note": "Public half of the shared Mailjet key pair. Rotate together with MAILJET_API_SECRET.",
+      "manualSteps": [
+        "Open https://app.mailjet.com/account/apikeys and create a new API key pair.",
+        "secret set _mailjet MAILJET_API_KEY=<NEW_PUBLIC_KEY> MAILJET_API_SECRET=<NEW_PRIVATE_KEY>",
+        "After every downstream email path is verified, delete the old key pair in Mailjet."
+      ]
+    },
+
+    "MAILJET_API_SECRET": {
+      "strategy": "manual",
+      "targets": [],
+      "crossProjectPropagate": [
+        { "project": "new-app", "targets": ["vercel", "localEnv"] },
+        { "project": "legacy-app", "key": "MAILJET_SECRET_KEY", "targets": ["vercel", "localEnv"] }
+      ],
+      "_note": "Private half of the shared Mailjet key pair. Some downstream projects may still receive it as MAILJET_SECRET_KEY via crossProjectPropagate[].key."
+    },
+
+    "EMAIL_FROM": {
+      "strategy": "manual",
+      "targets": [],
+      "crossProjectPropagate": [
+        { "project": "new-app", "targets": ["vercel", "localEnv"] },
+        { "project": "legacy-app", "key": "FROM_EMAIL", "targets": ["vercel", "localEnv"] }
+      ],
+      "_note": "Verified sender address shared by Mailjet consumers. Use crossProjectPropagate[].key for projects that still read FROM_EMAIL, MAILJET_FROM_EMAIL, or ALERT_EMAIL_FROM."
+    }
+  }
+}
