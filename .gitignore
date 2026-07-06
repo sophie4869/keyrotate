@@ -4,3 +4,4 @@ bin/secret-helpers/node_modules/
 *.pem
 *.key
 *_credentials*.json
+.DS_Store

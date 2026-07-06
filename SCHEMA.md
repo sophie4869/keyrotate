@@ -125,8 +125,8 @@ Targets are processed **sequentially in array order** — no pre-flight, no tran
 ```
 secret ls
 secret list           <project>
-secret rotate         <project> <KEY> [KEY...]                                                # atlas-mongodb / random
-secret set            <project> <KEY=V | KEY --value V | KEY --from-stdin> [more pairs...]
+secret rotate         <project> [--targets a,b] [--only-project <name>] <KEY> [KEY...]        # atlas-mongodb / random
+secret set            <project> [--targets a,b] [--only-project <name>] <KEY=V | KEY --value V | KEY --from-stdin> [more pairs...]
 secret add            <project> <KEY> --value V [--separator ,]                               # append to delimited list
 secret remove         <project> <KEY> --value V [--separator ,]                               # remove from delimited list
 secret pull           <project> [KEY]                                                         # resync localEnv from GCP Secret Manager
@@ -136,3 +136,10 @@ secret vercel-upgrade <project|--all> [--dry-run] [--encrypted|--sensitive] [--a
 ```
 
 **Multi-key invocations on `rotate` / `set` batch the post-write Vercel redeploy**: every Vercel project touched (including via `crossProjectPropagate`) gets one redeploy at the end of the run, deduplicated by projectId. For `set`, the three pair forms (shorthand `KEY=V`, explicit `--value`, and `--from-stdin`) can mix freely in one invocation — `--from-stdin` and the interactive prompt remain single-key only.
+
+**Scoping a push (two axes):**
+
+- **`--targets <list>`** filters by sink type. Comma-separated list of target names (`vercel`, `cloudRun`, `koyeb`, `localEnv`, `ssh`, `github`, `gcpSecretManager`, `userPassword`). Non-matching targets are skipped with a `⏭` log line. This filter **applies WITHIN `crossProjectPropagate` too** — `--targets koyeb` for a secret that owns a Koyeb sink only on a downstream project still reaches it. Skipped targets on the owning project print a skip line; non-matching downstream projects fall through cleanly.
+- **`--only-project <name>`** filters by project axis. Restricts the push to exactly one project (the owning project or any `crossProjectPropagate` entry, resolved through the alias map). Every other project is skipped with a `⏭` log line.
+
+The two flags **compose**: e.g. `secret set s0 JWT_SECRET=$V --targets koyeb --only-project VocabCompanion` re-pushes just the Koyeb-side JWT_SECRET on VocabCompanion, without touching s0phi3's own Vercel + local `.env`, without touching dreamAtelier/info_hub/etc.'s Cloud Run + GCP SM, and without minting a fresh value. This is the surgical recovery path when one downstream sink drifts.

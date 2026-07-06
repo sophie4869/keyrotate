@@ -4,6 +4,19 @@ All notable changes to `keyrotate` are documented here. Format loosely follows [
 
 ## [Unreleased]
 
+### Added
+
+- **`--only-project <name>`** on `rotate` / `set` — restrict a push to one project (owning or `crossProjectPropagate`, alias-resolved). Composes with `--targets`, e.g. `--targets koyeb --only-project VocabCompanion` re-pushes just VocabCompanion's Koyeb sink.
+- **README hero screenshot** of a `crossProjectPropagate` cascade in action, plus a `secret list <project>` screenshot in the quick-start section showing the values-free target matrix an agent can safely traverse.
+
+### Changed
+
+- **`--targets` now filters WITHIN `crossProjectPropagate`** (previously it also skipped cross-project entirely, which meant `--targets koyeb` couldn't reach a downstream-only Koyeb sink). Now the same filter applies to cross-project targets too — including retries like `--targets ssh` that need to fan out across the fleet after a partial failure. Skipped sinks print a `⏭` line for visibility.
+
+### Fixed
+
+- **A single failed Cloud Run deploy no longer aborts the whole propagation.** Under `set -e`, an un-bootable container (unrelated latent bug on one service) used to kill the whole `rotate` / `set` run and silently starve every later target and every downstream `crossProjectPropagate` project of the new value. `prop_cloud_run`'s `gcloud run services update --update-secrets` now logs a `⚠️` and continues so one broken service can't hold the rest of the fleet hostage.
+
 ## [0.1.0] — 2026-06-17
 
 First tagged release. `keyrotate` is production-ready for the maintainer's own use across ~14 projects; API is not frozen yet, expect additive changes in 0.x.

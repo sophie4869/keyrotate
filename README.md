@@ -17,6 +17,10 @@ Two motivations, both increasingly underserved by existing "secrets management" 
 - **For (1):** declare *where each secret physically lives* in JSON. `secret rotate <project> KEY` produces a new value and pushes it to every declared sink in one command (sequentially; see the "no rollback" note below). No daemon, no vault, no SaaS — just bash + a thin wrapper around provider APIs you already have credentials for.
 - **For (2):** configs are **values-free by design** (project IDs, cluster hosts, target lists — no passwords or tokens, ever). Agents can read configs freely, and *should* call the CLI rather than touch `.env`: `secret list / notes / ls` answer "what exists where, and how do I rotate it?" without ever exposing a value; `secret pull` populates a local `.env` without putting the value on stdout. There's a [matching Claude Code skill template](examples/managing-secrets.SKILL.md) that teaches an agent this protocol, and triggers emergency rotation if a value *does* end up exposed.
 
+![One `secret set` re-pushes a JWT signing secret through crossProjectPropagate to two downstream Cloud Run services](docs/rotate-cascade.jpg)
+
+> **One command, N places.** Above: re-pushing `JWT_SECRET` from the owning `s0phi3` config lands the value in Vercel (prod + preview, auto-redeploy queued), local `login/.env`, and then via **`crossProjectPropagate`** into `dreamAtelier` and `info_hub` — each getting their own GCP Secret Manager version and Cloud Run new-revision deploy. Every downstream verifier picks up the new value atomically; nothing manual, no drift across N repos.
+
 ## Supported platforms (targets)
 
 A "target" is somewhere a secret value physically needs to be. On `secret rotate` / `secret set`, every declared target for a secret is updated **sequentially in array order** (no pre-flight, no transaction, no rollback — see [Failure modes](#failure-modes-rerun-on-partial-failure) below):
@@ -185,11 +189,15 @@ Full schema in [`SCHEMA.md`](SCHEMA.md). A worked example covering every strateg
 
 ## Quick start
 
-Once a config is in place:
+`secret list <project>` prints the target matrix for every tracked secret — this is the values-free inventory an agent can freely read:
+
+![secret list monitoring — target matrix](docs/list-output.jpg)
+
+Then the day-to-day CLI:
 
 ```sh
 secret ls                                       # all configured projects
-secret list myapp                               # secrets in myapp
+secret list myapp                               # secrets in myapp (as above)
 secret rotate myapp JWT_SECRET                  # generate random + propagate
 secret set    myapp OPENAI_API_KEY=sk-…         # KEY=value shorthand
 secret set    myapp OPENAI_API_KEY --value sk-… # equivalent explicit form
