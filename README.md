@@ -65,6 +65,16 @@ Porting credential lookup to libsecret (`secret-tool`) for Linux is roughly a 30
 
 ## Install
 
+**Homebrew** (recommended):
+
+```sh
+brew install sophie4869/tap/keyrotate
+```
+
+Pulls `jq` as a dep and recommends `gh` (needed only for the `github` + `userPassword` targets — every other target works without it). Post-install hints point at `~/.config/keyrotate/` and the macOS Keychain services each provider expects.
+
+**From source** (if you want the `install.sh` bootstrap that also seeds `~/.config/keyrotate/` with an example config, or you're on Linux and stubbornly want to try):
+
 ```sh
 git clone https://github.com/sophie4869/keyrotate ~/keyrotate
 cd ~/keyrotate && bash install.sh
