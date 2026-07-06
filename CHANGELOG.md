@@ -4,6 +4,8 @@ All notable changes to `keyrotate` are documented here. Format loosely follows [
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-07-06
+
 ### Added
 
 - **`--only-project <name>`** on `rotate` / `set` — restrict a push to one project (owning or `crossProjectPropagate`, alias-resolved). Composes with `--targets`, e.g. `--targets koyeb --only-project VocabCompanion` re-pushes just VocabCompanion's Koyeb sink.
@@ -53,5 +55,6 @@ First tagged release. `keyrotate` is production-ready for the maintainer's own u
 - Examples: `example.json` (a fully-annotated skeleton), `_aliases.json` template, `managing-secrets.SKILL.md`.
 - Explicit callouts throughout: **currently macOS-only** (macOS Keychain for provider creds), **not idempotent** on `rotate` (each invocation mints fresh; use `set` for repropagation).
 
-[Unreleased]: https://github.com/sophie4869/keyrotate/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/sophie4869/keyrotate/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/sophie4869/keyrotate/releases/tag/v0.1.1
 [0.1.0]: https://github.com/sophie4869/keyrotate/releases/tag/v0.1.0
