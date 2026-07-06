@@ -84,7 +84,9 @@ That symlinks `~/bin/secret` into `~/bin/`, runs `npm install` for the `userPass
 
 ## Failure modes (recovery on partial failure)
 
-`secret rotate` / `secret set` walks each `targets[]` entry in order and stops on the first non-`200`. There is **no pre-flight, no transaction, and no rollback** — if Vercel succeeds and Cloud Run fails on the next step, you'll have a half-rotated state where Vercel has the new value and Cloud Run still serves the old one.
+`secret rotate` / `secret set` walks each `targets[]` entry in order. There is **no pre-flight, no transaction, and no rollback** — if Vercel succeeds and a later step fails, you'll have a half-rotated state where Vercel has the new value and the failed sink still serves the old one.
+
+One exception, added deliberately: a **Cloud Run service that fails to deploy no longer aborts the whole run**. A single un-bootable container (e.g. a service that's been broken for days on an unrelated bug) used to kill propagation under `set -e` — silently starving every *later* target and every downstream `crossProjectPropagate` project of the new value. Now it logs a `⚠️` and continues, so one broken service can't hold the rest of the fleet hostage.
 
 `secret rotate` is **not idempotent**: every invocation generates a fresh value (Atlas PATCH + new password for `atlas-mongodb`; `openssl rand` for `random`). Re-running it after a partial failure won't push the existing new value to the remaining sinks — it'll mint *another* new value and try again.
 
@@ -222,8 +224,9 @@ secret set myapp \
 ```
 secret ls                                       list known projects
 secret list           <project>                 list secrets in a project
-secret rotate         <project> <KEY> [KEY...]  rotate (atlas-mongodb / random); multi-key batches Vercel redeploy
-secret set            <project> <KEY=V | KEY --value V | KEY --from-stdin> [more pairs...]
+secret rotate         <project> [--targets a,b] [--only-project P] <KEY> [KEY...]
+                                                rotate (atlas-mongodb / random); multi-key batches Vercel redeploy
+secret set            <project> [--targets a,b] [--only-project P] <KEY=V | KEY --value V | KEY --from-stdin> [more pairs...]
                                                 multi-pair batches Vercel redeploy; mix shorthand and --value freely
 secret add            <project> <KEY> --value V [--separator ,]  append to delimited list (read-current+dedupe+push)
 secret remove         <project> <KEY> --value V [--separator ,]  remove from delimited list
@@ -235,6 +238,22 @@ secret notes          [project [KEY]]           show rotation playbooks (manualS
 ```
 
 `add` / `remove` read the current value via fallback chain: local `.env` → GCP Secret Manager (if configured) → Vercel single-env endpoint with `decrypt=true`. They handle the `decrypt=true` quirk that only works on `/v1/.../env/{id}` (not on the list endpoint).
+
+### Scoping a push: `--targets` and `--only-project`
+
+Both `rotate` and `set` accept two orthogonal, composable filters that narrow where a value lands:
+
+- **`--targets <list>`** — comma-separated sink types (`koyeb`, `vercel`, `cloudRun`, `ssh`, `localEnv`, …). Keeps only those sinks, applied across **both** the owning project's targets **and** every `crossProjectPropagate` entry. So `--targets koyeb` reaches a Koyeb sink wherever it lives — even a downstream-only one — and `--targets ssh` retries just the ssh pushes after a partial failure.
+- **`--only-project <name>`** — restrict to a single project (alias-resolved), whether that's the owning project or one `crossProjectPropagate` entry.
+
+Combine them to surgically fix one lagging downstream service without redeploying the fleet. For a JWT signing key owned by an auth service and verified by N others, if only one downstream is stale:
+
+```sh
+# push the CURRENT value to just that project's Koyeb sink, and nothing else
+secret get s0 JWT_SECRET | (read -r V; secret set s0 JWT_SECRET --value "$V" --targets koyeb)
+```
+
+`--targets` earlier skipped `crossProjectPropagate` wholesale; it now filters within it, so a sink-scoped push reaches downstream sinks of that type too.
 
 ## Why not [X]?
 
