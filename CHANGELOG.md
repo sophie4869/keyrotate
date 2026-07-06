@@ -4,6 +4,17 @@ All notable changes to `keyrotate` are documented here. Format loosely follows [
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-07-06
+
+### Added
+
+- **`crossProjectPropagate[].key` downstream aliasing** — shared owner configs can now push a canonical key under a different env-var name in a downstream project. This supports fleet-wide shared secrets where some apps still read legacy names, e.g. `_mailjet` owning `MAILJET_API_SECRET` while older apps receive `MAILJET_SECRET_KEY`, or `EMAIL_FROM` propagating as `FROM_EMAIL` / `ALERT_EMAIL_FROM`.
+- **Shared Mailjet example config** showing canonical `MAILJET_API_KEY`, `MAILJET_API_SECRET`, and `EMAIL_FROM` ownership with downstream aliases.
+
+### Changed
+
+- **`secret ls` target summaries include cross-project targets**, so synthetic/shared configs with empty primary targets still show the sinks they can reach through `crossProjectPropagate`.
+
 ## [0.1.1] — 2026-07-06
 
 ### Added
@@ -55,6 +66,7 @@ First tagged release. `keyrotate` is production-ready for the maintainer's own u
 - Examples: `example.json` (a fully-annotated skeleton), `_aliases.json` template, `managing-secrets.SKILL.md`.
 - Explicit callouts throughout: **currently macOS-only** (macOS Keychain for provider creds), **not idempotent** on `rotate` (each invocation mints fresh; use `set` for repropagation).
 
-[Unreleased]: https://github.com/sophie4869/keyrotate/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/sophie4869/keyrotate/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/sophie4869/keyrotate/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/sophie4869/keyrotate/releases/tag/v0.1.1
 [0.1.0]: https://github.com/sophie4869/keyrotate/releases/tag/v0.1.0
