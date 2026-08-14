@@ -4,6 +4,16 @@ All notable changes to `keyrotate` are documented here. Format loosely follows [
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-08-14
+
+### Added
+
+- **Post-rotation JWT auth status checks** via per-secret `postRotateCheck.type="jwt-auth-status"`. After `rotate` / `set` finishes propagation and any queued Vercel redeploys, keyrotate signs a short-lived HS256 probe token with the new value and calls each configured verifier URL, typically `/auth/status`.
+
+### Changed
+
+- **Partial propagation is now louder for shared JWT secrets**: configured verifier rejections, non-2xx responses, or network failures make the command exit non-zero after retries, surfacing split-brain states where one sink accepted the new key while a downstream service still rejects it.
+
 ## [0.1.2] — 2026-07-06
 
 ### Added
@@ -66,7 +76,8 @@ First tagged release. `keyrotate` is production-ready for the maintainer's own u
 - Examples: `example.json` (a fully-annotated skeleton), `_aliases.json` template, `managing-secrets.SKILL.md`.
 - Explicit callouts throughout: **currently macOS-only** (macOS Keychain for provider creds), **not idempotent** on `rotate` (each invocation mints fresh; use `set` for repropagation).
 
-[Unreleased]: https://github.com/sophie4869/keyrotate/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/sophie4869/keyrotate/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/sophie4869/keyrotate/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/sophie4869/keyrotate/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/sophie4869/keyrotate/releases/tag/v0.1.1
 [0.1.0]: https://github.com/sophie4869/keyrotate/releases/tag/v0.1.0

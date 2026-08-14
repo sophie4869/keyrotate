@@ -82,6 +82,27 @@ Discovered automatically — no registration step.
       { "project": "legacy-app", "key": "MAILJET_SECRET_KEY", "targets": ["vercel", "localEnv"] }
     ],
 
+    // optional: after a successful rotate/set propagation, sign a short-lived
+    // HS256 JWT probe with the NEW secret value and require every verifier to
+    // accept it. Intended for shared JWT signing keys where downstream services
+    // expose an auth status endpoint such as /auth/status. Any non-2xx response
+    // or network failure exits the command red/non-zero after retries.
+    "postRotateCheck": {
+      "type": "jwt-auth-status",
+      "issuer": "keyrotate",
+      "subject": "keyrotate-probe",
+      "audience": "optional-audience",
+      "ttlSeconds": 180,
+      "timeoutSeconds": 10,
+      "retries": 12,
+      "retryDelaySeconds": 10,
+      "services": [
+        { "name": "downstream-a", "url": "https://a.example.com/auth/status" },
+        { "name": "downstream-b", "url": "https://b.example.com/auth/status",
+          "method": "GET", "header": "Authorization", "prefix": "Bearer " }
+      ]
+    },
+
     // optional: rotation playbook surfaced via `secret notes <project> <KEY>`.
     // Use for secrets where rotation needs UI steps that the tool can't automate
     // (e.g. GitHub App private keys, GitHub PATs, anything from a third-party console).

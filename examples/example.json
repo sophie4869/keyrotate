@@ -52,7 +52,21 @@
     "JWT_SECRET": {
       "strategy": "random",
       "length":   64,
-      "targets":  ["vercel", "localEnv"]
+      "targets":  ["vercel", "localEnv"],
+      "postRotateCheck": {
+        "type": "jwt-auth-status",
+        "_note": "Optional. After rotate/set, keyrotate signs a short-lived HS256 probe token with the new value and requires every verifier URL to return 2xx. Useful for shared JWT secrets propagated to multiple auth consumers.",
+        "issuer": "keyrotate",
+        "subject": "keyrotate-probe",
+        "ttlSeconds": 180,
+        "timeoutSeconds": 10,
+        "retries": 12,
+        "retryDelaySeconds": 10,
+        "services": [
+          { "name": "example-api", "url": "https://api.example.com/auth/status" },
+          { "name": "example-worker", "url": "https://worker.example.com/auth/status" }
+        ]
+      }
     },
 
     "GOOGLE_TOKEN_ENCRYPTION_KEY": {

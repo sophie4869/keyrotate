@@ -92,6 +92,8 @@ That symlinks `~/bin/secret` into `~/bin/`, runs `npm install` for the `userPass
 
 One exception, added deliberately: a **Cloud Run service that fails to deploy no longer aborts the whole run**. A single un-bootable container (e.g. a service that's been broken for days on an unrelated bug) used to kill propagation under `set -e` — silently starving every *later* target and every downstream `crossProjectPropagate` project of the new value. Now it logs a `⚠️` and continues, so one broken service can't hold the rest of the fleet hostage.
 
+For shared JWT signing secrets, add `postRotateCheck.type="jwt-auth-status"` to the secret config. After `rotate` / `set` finishes propagation and any queued Vercel redeploys, keyrotate signs a short-lived HS256 probe token with the **new** value and calls every configured verifier URL (typically `/auth/status`). Any verifier rejection, non-2xx response, or network timeout exits red/non-zero after retries. This does not make propagation transactional, but it turns "Vercel accepted the new key while a downstream verifier still rejects it" into a loud failed run instead of silent drift.
+
 `secret rotate` is **not idempotent**: every invocation generates a fresh value (Atlas PATCH + new password for `atlas-mongodb`; `openssl rand` for `random`). Re-running it after a partial failure won't push the existing new value to the remaining sinks — it'll mint *another* new value and try again.
 
 **Recovery recipe**:
@@ -100,7 +102,7 @@ One exception, added deliberately: a **Cloud Run service that fails to deploy no
 2. Push that value to the remaining sinks with `secret set <project> KEY='<value-from-sink>'` (or `KEY --value '<v>'`, or `KEY --from-stdin`). This is the idempotent escape hatch — `secret set` only propagates, it doesn't mint.
 3. Re-running `secret rotate` is fine too if you'd rather just rotate again from scratch — it's safe, just wasteful (extra Atlas PATCH / extra random gen) and you lose the in-flight value.
 
-Adding pre-flight checks + ordered retries is on the backlog.
+Adding pre-flight checks + ordered propagation retries is on the backlog.
 
 ## Getting provider credentials
 
@@ -182,6 +184,7 @@ The fields fall into two buckets:
 - For `atlas-mongodb`: nested `atlas` block (see above)
 - For `ssh` target: per-secret `ssh.path` (the absolute remote path to write to — each secret usually wants its own file)
 - `manualSteps` (optional) — array of strings; surfaced by `secret notes <project> <KEY>` as the rotation playbook (provider UI link, what scopes to grant, how to verify, etc.)
+- `postRotateCheck` (optional) — for shared JWT signing secrets, configure `type: "jwt-auth-status"` plus `services[].url` entries. After `rotate` / `set`, keyrotate signs a short-lived HS256 probe token with the new value and requires every verifier URL to return 2xx.
 
 **Inventory-only entries** (`"targets": []`): for credentials that live somewhere keyrotate can't reach (vendor portal, internal one-off, anything API-less). `secret list / notes` surface the entry as documentation; `secret rotate / set` succeed with a no-op propagation. See `PROVISIONING_DOC_URL` in `examples/example.json` for the pattern.
 
