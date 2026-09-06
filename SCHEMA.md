@@ -87,11 +87,20 @@ Discovered automatically — no registration step.
     // accept it. Intended for shared JWT signing keys where downstream services
     // expose an auth status endpoint such as /auth/status. Any non-2xx response
     // or network failure exits the command red/non-zero after retries.
+    //
+    // `claims` (optional): extra claims merged INTO the probe payload so it can
+    // satisfy verifiers that require app-specific claims (e.g. `userId`,
+    // `username`) — a claimless probe is 401'd by any verifier that reads
+    // `userId`. The reserved claims (iss/sub/aud/iat/nbf/exp/purpose) are applied
+    // ON TOP of these, so a configured claim can never spoof the probe's identity
+    // or lifetime. Pick probe-safe endpoints: they must return 401 on a bad token,
+    // 2xx on the claims probe, and perform NO writes / user-row creation.
     "postRotateCheck": {
       "type": "jwt-auth-status",
       "issuer": "keyrotate",
       "subject": "keyrotate-probe",
       "audience": "optional-audience",
+      "claims": { "userId": "keyrotate-probe", "username": "keyrotate-probe" },
       "ttlSeconds": 180,
       "timeoutSeconds": 10,
       "retries": 12,
