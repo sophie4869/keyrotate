@@ -15,7 +15,7 @@ Two motivations, both increasingly underserved by existing "secrets management" 
 `keyrotate` answers both:
 
 - **For (1):** declare *where each secret physically lives* in JSON. `secret rotate <project> KEY` produces a new value and pushes it to every declared sink in one command (sequentially; see the "no rollback" note below). No daemon, no vault, no SaaS — just bash + a thin wrapper around provider APIs you already have credentials for.
-- **For (2):** configs are **values-free by design** (project IDs, cluster hosts, target lists — no passwords or tokens, ever). Agents can read configs freely, and *should* call the CLI rather than touch `.env`: `secret list / notes / ls` answer "what exists where, and how do I rotate it?" without ever exposing a value; `secret pull` populates a local `.env` without putting the value on stdout. There's a [matching Claude Code skill template](examples/managing-secrets.SKILL.md) that teaches an agent this protocol, and triggers emergency rotation if a value *does* end up exposed.
+- **For (2):** configs are **values-free by design** (project IDs, cluster hosts, target lists — no passwords or tokens, ever). Agents can read configs freely, and *should* call the CLI rather than touch `.env`: `secret list / notes / ls` answer "what exists where, and how do I rotate it?" without ever exposing a value; `secret pull` populates a local `.env` — for keys that have a localEnv sink — without putting the value on stdout. There's a [matching Claude Code skill template](examples/managing-secrets.SKILL.md) that teaches an agent this protocol, and triggers emergency rotation if a value *does* end up exposed.
 
 ![One `secret set` re-pushes a JWT signing secret through crossProjectPropagate to two downstream Cloud Run services](docs/rotate-cascade.jpg)
 
@@ -241,7 +241,7 @@ secret set            <project> [--targets a,b] [--only-project P] <KEY=V | KEY 
                                                 multi-pair batches Vercel redeploy; mix shorthand and --value freely
 secret add            <project> <KEY> --value V [--separator ,]  append to delimited list (read-current+dedupe+push)
 secret remove         <project> <KEY> --value V [--separator ,]  remove from delimited list
-secret pull           <project> [KEY]           resync localEnv from GCP Secret Manager
+secret pull           <project> [KEY]           resync localEnv from GCP Secret Manager (keys with a localEnv sink)
 secret get            <project> <KEY>           print current value to stdout (human-only — agents must not call without explicit user request; warns on non-TTY)
 secret vercel-upgrade <project|--all> [--dry-run] [--encrypted|--sensitive]
                                                 upgrade Vercel env vars to sensitive (heuristic by default)
