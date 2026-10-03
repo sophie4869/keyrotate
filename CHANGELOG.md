@@ -4,7 +4,19 @@ All notable changes to `keyrotate` are documented here. Format loosely follows [
 
 ## [Unreleased]
 
+### Fixed
+
+- **`rotate` no longer reports 🎉 when a sink failed.** Sinks run inside `| while` pipelines and under `if !` call sites, where bash disables `set -e`, so a failed push (e.g. `gcloud secrets versions add` with an expired login) printed nothing and the run exited 0. That is how the 2026-10-01 scheduled rotation changed the Atlas password and updated Vercel + local `.env` while every GCP Secret Manager / Cloud Run sink silently kept the old value. Every sink failure is now recorded (across subshells and `crossProjectPropagate` hops), listed at the end, and makes `rotate` / `set` exit non-zero. A failed Cloud Run deploy still doesn't stop the other sinks, but it now counts as a failure instead of a ⚠️.
+- **`prop_vercel` failures propagate** — its per-env loop ran in a subshell, so `return 1` on an HTTP error never left the function.
+
+### Added
+
+- **Preflight before anything is generated.** `rotate` and `set` first check every credential the run needs — `gcloud auth print-access-token` for each `gcpAccount` across the owning project and `crossProjectPropagate`, the Vercel token, `gh auth status` — and abort before the Atlas password PATCH if any is missing. Bypass with `KEYROTATE_SKIP_PREFLIGHT=1`.
+- **`mongoPing` post-check** for `atlas-mongodb` secrets and any `mongodb://` / `mongodb+srv://` value: after propagation, `bin/secret-helpers/mongo-ping.mjs` connects with the new URI (passed via env, never argv) and pings, retrying while Atlas applies the password. Opt out per secret with `"mongoPing": false`; skipped with a ⚠️ when node or the helper deps aren't installed.
+
 ### Changed
+
+- **`gcpSecretManager` keeps the previous version** when destroying superseded ones, so a bad value can be rolled back.
 
 - **`gcpSecretManager` now destroys superseded versions** after adding the new one. Secret Manager bills every non-destroyed version (~$0.06/mo each, disabled ones included), and consumers read `latest`, so old versions were pure cost — rotation had let one project pile up 37 active versions across 21 secrets. A failed destroy only warns; it never fails the rotation.
 
