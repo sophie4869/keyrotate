@@ -4,6 +4,10 @@ All notable changes to `keyrotate` are documented here. Format loosely follows [
 
 ## [Unreleased]
 
+### Changed
+
+- **`gcpSecretManager` now destroys superseded versions** after adding the new one. Secret Manager bills every non-destroyed version (~$0.06/mo each, disabled ones included), and consumers read `latest`, so old versions were pure cost — rotation had let one project pile up 37 active versions across 21 secrets. A failed destroy only warns; it never fails the rotation.
+
 ## [0.1.3] — 2026-08-14
 
 ### Added
